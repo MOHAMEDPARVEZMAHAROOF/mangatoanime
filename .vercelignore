@@ -1,6 +1,8 @@
 mangaToAnime/node_modules
 mangaToAnime/dist
-mangaToAnime/.git
+web/node_modules
+web/.next
 **/*.exe
 **/*.zip
 **/*.dmg
+website
