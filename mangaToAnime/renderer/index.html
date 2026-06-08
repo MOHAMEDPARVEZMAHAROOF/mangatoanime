@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file:; media-src 'self' blob: file:;" />
+  <title>MangaToAnime</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Top Bar -->
+    <header class="top-bar">
+      <div class="logo-area">
+        <img src="../assets/logo.png" alt="MangaToAnime" class="logo" />
+        <h1>MangaToAnime</h1>
+      </div>
+      <div class="step-indicator">
+        <span id="step-label">Step 1/7</span>
+        <span id="step-name">PDF Upload</span>
+      </div>
+      <div class="top-actions">
+        <button id="btn-gemini-login" class="btn btn-ghost" title="Gemini Login">Gemini Login</button>
+        <button id="btn-settings" class="btn btn-icon" title="Settings">⚙</button>
+      </div>
+    </header>
+
+    <div class="main-layout">
+      <!-- Left Sidebar: Panel Queue -->
+      <aside class="sidebar sidebar-left">
+        <h2>Panel Queue</h2>
+        <div id="panel-queue" class="queue-list">
+          <p class="empty-state">No panels selected</p>
+        </div>
+        <button id="btn-process-panels" class="btn btn-primary btn-block" disabled>
+          Process Selected Panels
+        </button>
+      </aside>
+
+      <!-- Center Workspace -->
+      <main class="workspace" id="workspace">
+        <!-- Step 1: PDF Upload -->
+        <section id="step-1" class="step-panel active">
+          <div id="drop-zone" class="drop-zone">
+            <div class="drop-icon">📄</div>
+            <p>Drag & drop a manga PDF here</p>
+            <p class="sub">or click to browse</p>
+          </div>
+          <div id="pdf-grid" class="pdf-grid hidden"></div>
+        </section>
+
+        <!-- Step 2: Extraction -->
+        <section id="step-2" class="step-panel">
+          <h2>Extracting Panels</h2>
+          <div class="progress-container">
+            <div class="progress-bar">
+              <div id="extract-progress" class="progress-fill" style="width: 0%"></div>
+            </div>
+            <p id="extract-status">Preparing extraction...</p>
+          </div>
+        </section>
+
+        <!-- Step 3: Keyframe Restyling -->
+        <section id="step-3" class="step-panel">
+          <h2>Anime Keyframe Generation</h2>
+          <div id="keyframe-list" class="keyframe-list"></div>
+        </section>
+
+        <!-- Step 4: Video Prompt Builder -->
+        <section id="step-4" class="step-panel">
+          <h2>Video Prompt Builder</h2>
+          <div id="prompt-builder" class="prompt-builder"></div>
+        </section>
+
+        <!-- Step 5: Video Generation -->
+        <section id="step-5" class="step-panel">
+          <h2>Video Generation</h2>
+          <div class="progress-container">
+            <div class="progress-bar">
+              <div id="video-progress" class="progress-fill" style="width: 0%"></div>
+            </div>
+            <p id="video-status">Waiting to start...</p>
+          </div>
+          <div id="gemini-hint" class="hint-card">
+            <p>Gemini browser panel opens on the right. Use <strong>Gemini Login</strong> or <strong>Bypass Login</strong> in Settings with your cookie.</p>
+          </div>
+        </section>
+
+        <!-- Step 6: Clip Queue -->
+        <section id="step-6" class="step-panel">
+          <h2>Clip Timeline</h2>
+          <div id="clip-timeline" class="clip-timeline"></div>
+          <div id="clip-player" class="clip-player hidden">
+            <video id="preview-video" controls></video>
+          </div>
+        </section>
+
+        <!-- Step 7: Export -->
+        <section id="step-7" class="step-panel">
+          <h2>Export Full Video</h2>
+          <div id="export-area" class="export-area">
+            <button id="btn-export" class="btn btn-primary btn-lg">Export Full Video</button>
+            <div class="progress-container hidden" id="export-progress-area">
+              <div class="progress-bar">
+                <div id="export-progress" class="progress-fill" style="width: 0%"></div>
+              </div>
+              <p id="export-status">Stitching clips...</p>
+            </div>
+          </div>
+          <div id="done-screen" class="done-screen hidden">
+            <div class="done-icon">✓</div>
+            <h3>Done!</h3>
+            <p id="done-path"></p>
+            <div class="done-actions">
+              <button id="btn-open-video" class="btn btn-primary">Open Video</button>
+              <button id="btn-show-folder" class="btn btn-ghost">Show in Folder</button>
+            </div>
+            <video id="final-preview" controls class="final-preview"></video>
+          </div>
+        </section>
+      </main>
+
+      <!-- Right Sidebar: Status & Settings -->
+      <aside class="sidebar sidebar-right">
+        <h2>Status</h2>
+        <div id="status-log" class="status-log">
+          <p class="status-item">Ready</p>
+        </div>
+        <div id="generation-status" class="generation-status hidden">
+          <div class="spinner"></div>
+          <p id="gen-status-text">Processing...</p>
+        </div>
+      </aside>
+    </div>
+
+    <!-- Clip timeline bar (always visible from step 6) -->
+    <footer id="timeline-footer" class="timeline-footer hidden">
+      <div id="timeline-clips" class="timeline-clips"></div>
+    </footer>
+  </div>
+
+  <!-- Settings Modal -->
+  <div id="settings-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Settings</h2>
+        <button id="btn-close-settings" class="btn btn-icon">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="setting-api-key">Gemini API Key</label>
+          <input type="password" id="setting-api-key" placeholder="Enter API key" />
+        </div>
+
+        <div class="form-group">
+          <label for="setting-theme">Theme</label>
+          <select id="setting-theme">
+            <option value="solo-leveling">Solo Leveling (purple/black)</option>
+            <option value="naruto">Naruto (orange/black)</option>
+            <option value="demon-slayer">Demon Slayer (red/black)</option>
+            <option value="custom">Custom</option>
+          </select>
+        </div>
+
+        <div class="form-group" id="custom-color-group">
+          <label for="setting-custom-color">Custom Accent Color</label>
+          <input type="color" id="setting-custom-color" value="#7B5CF0" />
+        </div>
+
+        <div class="form-group">
+          <label for="setting-series">Series Mode</label>
+          <select id="setting-series">
+            <option value="solo-leveling">Solo Leveling</option>
+            <option value="custom">Add custom series</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="setting-clip-duration">Default Clip Duration</label>
+          <select id="setting-clip-duration">
+            <option value="8">8 seconds</option>
+            <option value="10">10 seconds</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="setting-resolution">Output Resolution</label>
+          <select id="setting-resolution">
+            <option value="1080p">1080p</option>
+            <option value="4K">4K</option>
+          </select>
+        </div>
+
+        <hr class="divider" />
+
+        <h3>Gemini Browser Login</h3>
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="setting-bypass-login" />
+            Bypass Login (use cookie)
+          </label>
+        </div>
+        <div class="form-group" id="cookie-group">
+          <label for="setting-gemini-cookie">Google Session Cookie</label>
+          <textarea id="setting-gemini-cookie" rows="3" placeholder="Paste cookie string here (e.g. SID=...; HSID=...)"></textarea>
+        </div>
+
+        <div class="form-group">
+          <label for="setting-general-prompt">General Prompt (optional override)</label>
+          <textarea id="setting-general-prompt" rows="4" placeholder="Leave empty to use default Solo Leveling prompt"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-save-settings" class="btn btn-primary">Save Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Gemini Login Modal -->
+  <div id="login-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Gemini Login</h2>
+        <button id="btn-close-login" class="btn btn-icon">✕</button>
+      </div>
+      <div class="modal-body">
+        <p>Sign in to Gemini to enable image and video generation automation.</p>
+        <button id="btn-open-gemini-login" class="btn btn-primary btn-block">Open Google Sign-In</button>
+        <hr class="divider" />
+        <p class="sub">If sign-in is blocked by security policies:</p>
+        <button id="btn-bypass-login" class="btn btn-ghost btn-block">Bypass Login with Cookie</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="pdf-handler.js"></script>
+  <script src="gemini.js"></script>
+  <script src="veo.js"></script>
+  <script src="ffmpeg.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

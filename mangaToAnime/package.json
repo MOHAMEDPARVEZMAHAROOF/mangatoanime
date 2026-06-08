@@ -1,0 +1,75 @@
+{
+  "name": "mangatoanime",
+  "version": "1.0.0",
+  "description": "Convert manga PDF panels into anime-styled video clips using Gemini",
+  "main": "main.js",
+  "author": "MangaToAnime",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:win:unpacked": "electron-builder --win --dir",
+    "build:mac": "electron-builder --mac",
+    "build:all": "electron-builder --win --mac"
+  },
+  "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@google/generative-ai": "^0.24.0",
+    "electron-store": "^8.2.0",
+    "fluent-ffmpeg": "^2.1.3",
+    "pdfjs-dist": "^4.10.38",
+    "sharp": "^0.33.5"
+  },
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.mangatoanime.app",
+    "productName": "MangaToAnime",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "assets/**/*",
+      "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "node_modules/@ffmpeg-installer/${platform}-${arch}/",
+        "to": "ffmpeg",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.png",
+      "signAndEditExecutable": false
+    },
+    "mac": {
+      "target": ["dmg"],
+      "icon": "assets/icon.png",
+      "category": "public.app-category.video"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}
