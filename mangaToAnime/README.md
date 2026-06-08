@@ -74,13 +74,22 @@ Output: `dist/MangaToAnime-x.x.x.dmg`
 | Series Mode | Character anchor descriptions per series |
 | General Prompt | Override the default Solo Leveling style prompt |
 
+## Architecture
+
+- **`main.js`** — OS integration, FFmpeg, encrypted settings, native download bridge (`session.on('will-download')`)
+- **`preload.js`** — IPC bridge between Electron and UI
+- **`renderer/gemini.js`** — Gemini DOM automation inside `<webview>` via `executeJavaScript`
+- **`renderer/veo.js`** — Veo video automation inside the same webview
+- **`renderer/webview.css`** — Injected styles to clean up Gemini's interface
+
+The `<webview>` uses partition `persist:gemini` so login persists across sessions.
+
 ## File Structure
 
 ```
 mangaToAnime/
   main.js              Electron main process
   preload.js           Context bridge
-  gemini-automation.js Browser automation for Gemini
   renderer/
     index.html         Main UI
     styles.css         Dark theme

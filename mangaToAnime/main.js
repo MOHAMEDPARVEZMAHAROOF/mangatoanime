@@ -1,7 +1,6 @@
 const {
   app,
   BrowserWindow,
-  BrowserView,
   ipcMain,
   dialog,
   shell,
@@ -10,18 +9,11 @@ const {
 const path = require('path');
 const fs = require('fs');
 const fsp = require('fs/promises');
-const os = require('os');
 const crypto = require('crypto');
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 const Store = require('electron-store');
 const sharp = require('sharp');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-const {
-  runImageGenerationAutomation,
-  runVideoGenerationAutomation,
-  injectCookies,
-} = require('./gemini-automation');
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
@@ -35,7 +27,7 @@ const store = new Store({
 });
 
 let mainWindow = null;
-let geminiView = null;
+const downloadWaitQueue = [];
 
 const BASE_PROMPT = `You are a professional anime key animator working on an official Solo Leveling animated series production. Your task is to convert the uploaded manga panel into a fully rendered anime production cel.
 
@@ -119,22 +111,10 @@ DO NOT:
 - Make the shadow aura a solid black border — it must be wispy and particle-based`;
 
 const THEME_PROMPTS = {
-  'solo-leveling': {
-    palette: 'deep blacks, vivid purples and blues for shadow energy effects, pale skin tones, dark hair',
-    accent: '#7B5CF0',
-  },
-  naruto: {
-    palette: 'vibrant oranges, deep blues, warm skin tones, ninja headbands, chakra glow effects',
-    accent: '#FF6B00',
-  },
-  'demon-slayer': {
-    palette: 'crimson reds, charcoal blacks, water breathing blues, sakura pinks, dramatic contrast',
-    accent: '#E63946',
-  },
-  custom: {
-    palette: 'user-defined custom palette',
-    accent: '#7B5CF0',
-  },
+  'solo-leveling': { palette: 'deep blacks, vivid purples and blues', accent: '#7B5CF0' },
+  naruto: { palette: 'vibrant oranges, deep blues', accent: '#FF6B00' },
+  'demon-slayer': { palette: 'crimson reds, charcoal blacks', accent: '#E63946' },
+  custom: { palette: 'user-defined', accent: '#7B5CF0' },
 };
 
 const SERIES_ANCHORS = {
@@ -168,6 +148,55 @@ function sendToRenderer(channel, data) {
   }
 }
 
+function setupDownloadBridge() {
+  const ses = session.fromPartition('persist:gemini');
+
+  ses.on('will-download', (event, item) => {
+    const dirs = getWorkDirs();
+    const ext = path.extname(item.getFilename()) || '.png';
+    const savePath = path.join(dirs.downloads, `gemini_${Date.now()}${ext}`);
+    item.setSavePath(savePath);
+
+    item.once('done', (_e, state) => {
+      const waiter = downloadWaitQueue.shift();
+      if (!waiter) return;
+
+      if (state === 'completed') {
+        waiter.resolve({ success: true, path: savePath });
+      } else {
+        waiter.reject(new Error(`Download ${state}`));
+      }
+    });
+  });
+}
+
+async function injectCookies(cookieString) {
+  const ses = session.fromPartition('persist:gemini');
+  if (!cookieString?.trim()) return;
+
+  const pairs = cookieString.split(';').map((s) => s.trim()).filter(Boolean);
+  for (const pair of pairs) {
+    const eq = pair.indexOf('=');
+    if (eq === -1) continue;
+    const name = pair.slice(0, eq).trim();
+    const value = pair.slice(eq + 1).trim();
+    try {
+      await ses.cookies.set({
+        url: 'https://gemini.google.com',
+        name,
+        value,
+        domain: '.google.com',
+        path: '/',
+        secure: true,
+        httpOnly: false,
+        sameSite: 'no_restriction',
+      });
+    } catch {
+      // continue
+    }
+  }
+}
+
 function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 1440,
@@ -181,6 +210,7 @@ function createMainWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      webviewTag: true,
     },
     icon: path.join(__dirname, 'assets', 'logo.png'),
   });
@@ -193,76 +223,7 @@ function createMainWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
-    if (geminiView) {
-      geminiView = null;
-    }
   });
-}
-
-function showGeminiView(show = true) {
-  if (!mainWindow) return;
-
-  if (!geminiView) {
-    geminiView = new BrowserView({
-      webPreferences: {
-        partition: 'persist:gemini',
-        contextIsolation: true,
-        nodeIntegration: false,
-      },
-    });
-    mainWindow.setBrowserView(geminiView);
-  }
-
-  if (show) {
-    const bounds = mainWindow.getContentBounds();
-    const sidebarWidth = 360;
-    geminiView.setBounds({
-      x: bounds.width - sidebarWidth - 20,
-      y: 80,
-      width: sidebarWidth,
-      height: bounds.height - 160,
-    });
-    geminiView.setAutoResize({ width: false, height: true });
-    geminiView.webContents.loadURL('https://gemini.google.com');
-  } else {
-    mainWindow.removeBrowserView(geminiView);
-  }
-}
-
-function resizeGeminiView() {
-  if (!mainWindow || !geminiView) return;
-  const bounds = mainWindow.getContentBounds();
-  const sidebarWidth = 360;
-  geminiView.setBounds({
-    x: bounds.width - sidebarWidth - 20,
-    y: 80,
-    width: sidebarWidth,
-    height: bounds.height - 160,
-  });
-}
-
-async function optimizePromptForImage(imagePath, themeId, customPalette) {
-  const metadata = await sharp(imagePath).metadata();
-  const isLandscape = metadata.width > metadata.height;
-  const isWide = metadata.width / metadata.height > 1.5;
-
-  const theme = THEME_PROMPTS[themeId] || THEME_PROMPTS['solo-leveling'];
-  let prompt = BASE_PROMPT;
-
-  if (themeId !== 'solo-leveling') {
-    prompt += `\n\nCOLOR PALETTE OVERRIDE: ${themeId === 'custom' ? customPalette : theme.palette}`;
-  }
-
-  if (isLandscape || isWide) {
-    prompt =
-      'Landscape orientation panel. Maintain wide cinematic framing.\n\n' + prompt;
-  }
-
-  if (metadata.height > metadata.width * 1.3) {
-    prompt = 'Vertical portrait panel composition.\n\n' + prompt;
-  }
-
-  return prompt;
 }
 
 function buildVideoPrompt(keyframeDescription, action, cameraMove) {
@@ -306,17 +267,9 @@ function registerIpcHandlers() {
   }));
 
   ipcMain.handle('save-settings', (_, settings) => {
-    if (settings.apiKey !== undefined) store.set('apiKey', settings.apiKey);
-    if (settings.theme !== undefined) store.set('theme', settings.theme);
-    if (settings.customColor !== undefined) store.set('customColor', settings.customColor);
-    if (settings.clipDuration !== undefined) store.set('clipDuration', settings.clipDuration);
-    if (settings.resolution !== undefined) store.set('resolution', settings.resolution);
-    if (settings.series !== undefined) store.set('series', settings.series);
-    if (settings.geminiCookie !== undefined) store.set('geminiCookie', settings.geminiCookie);
-    if (settings.bypassLogin !== undefined) store.set('bypassLogin', settings.bypassLogin);
-    if (settings.customGeneralPrompt !== undefined) {
-      store.set('customGeneralPrompt', settings.customGeneralPrompt);
-    }
+    Object.entries(settings).forEach(([key, val]) => {
+      if (val !== undefined) store.set(key, val);
+    });
     return { success: true };
   });
 
@@ -335,17 +288,45 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle('read-file-buffer', async (_, filePath) => {
-    const buffer = await fsp.readFile(filePath);
-    return buffer;
+    return fsp.readFile(filePath);
+  });
+
+  ipcMain.handle('read-file-base64', async (_, filePath) => {
+    const buf = await fsp.readFile(filePath);
+    return buf.toString('base64');
   });
 
   ipcMain.handle('save-extracted-panel', async (_, { pageIndex, dataUrl }) => {
     const dirs = await ensureDirs();
-    const base64 = dataUrl.replace(/^data:image\/png;base64,/, '');
+    const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, '');
     const filename = `panel_${String(pageIndex + 1).padStart(3, '0')}.png`;
     const outputPath = path.join(dirs.extracted, filename);
     await fsp.writeFile(outputPath, Buffer.from(base64, 'base64'));
     return outputPath;
+  });
+
+  ipcMain.handle('save-keyframe', async (_, { panelIndex, sourcePath }) => {
+    const dirs = await ensureDirs();
+    const outName = `keyframe_${String(panelIndex + 1).padStart(3, '0')}.png`;
+    const outPath = path.join(dirs.keyframes, outName);
+    await fsp.copyFile(sourcePath, outPath);
+    return outPath;
+  });
+
+  ipcMain.handle('save-clip', async (_, { clipIndex, sourcePath }) => {
+    const dirs = await ensureDirs();
+    const outName = `clip_${String(clipIndex + 1).padStart(3, '0')}.mp4`;
+    const outPath = path.join(dirs.clips, outName);
+    await fsp.copyFile(sourcePath, outPath);
+    return outPath;
+  });
+
+  ipcMain.handle('extract-seed-frame', async (_, { clipPath, clipIndex }) => {
+    const dirs = await ensureDirs();
+    const seedName = `seed_${String(clipIndex + 2).padStart(3, '0')}.png`;
+    const seedPath = path.join(dirs.seeds, seedName);
+    await extractLastFrame(clipPath, seedPath);
+    return seedPath;
   });
 
   ipcMain.handle('optimize-prompt', async (_, { imagePath, themeId, customPalette }) => {
@@ -361,149 +342,42 @@ function registerIpcHandlers() {
 
     let prompt = base;
     if ((themeId || settings.theme) !== 'solo-leveling') {
-      prompt += `\n\nCOLOR PALETTE OVERRIDE: ${(themeId || settings.theme) === 'custom' ? customPalette || settings.customColor : theme.palette}`;
+      const t = themeId || settings.theme;
+      prompt += `\n\nCOLOR PALETTE OVERRIDE: ${t === 'custom' ? customPalette || settings.customColor : theme.palette}`;
     }
     if (isLandscape) {
       prompt = 'Landscape orientation. Wide cinematic framing.\n\n' + prompt;
     }
     const series = store.get('series', 'solo-leveling');
     const anchor = SERIES_ANCHORS[series];
-    if (anchor) {
-      prompt += `\n\nCHARACTER ANCHOR: ${anchor}`;
-    }
+    if (anchor) prompt += `\n\nCHARACTER ANCHOR: ${anchor}`;
     return prompt;
   });
 
-  ipcMain.handle('generate-keyframe-api', async (_, { imagePath, prompt }) => {
-    const apiKey = store.get('apiKey', '');
-    if (!apiKey) throw new Error('Gemini API key not configured');
-
-    const dirs = await ensureDirs();
-    const imageBuffer = await fsp.readFile(imagePath);
-    const base64 = imageBuffer.toString('base64');
-
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
-
-    const result = await model.generateContent([
-      { text: prompt },
-      {
-        inlineData: {
-          mimeType: 'image/png',
-          data: base64,
-        },
-      },
-      {
-        text: 'Generate a detailed image generation prompt optimized for converting this manga panel to anime style. Return only the prompt text.',
-      },
-    ]);
-
-    const optimizedText = result.response.text();
-    const imagenModel = genAI.getGenerativeModel({ model: 'imagen-3.0-generate-002' });
-
-    try {
-      const imagenResult = await imagenModel.generateImages({
-        prompt: optimizedText,
-        config: { numberOfImages: 1 },
-      });
-
-      if (imagenResult?.images?.[0]) {
-        const imgData = imagenResult.images[0];
-        const outName = `keyframe_${path.basename(imagePath)}`;
-        const outPath = path.join(dirs.keyframes, outName);
-        await fsp.writeFile(outPath, Buffer.from(imgData.imageBytes, 'base64'));
-        return { path: outPath, prompt: optimizedText, method: 'api' };
-      }
-    } catch {
-      // Fall through to browser automation
-    }
-
-    return { path: null, prompt: optimizedText, method: 'browser' };
-  });
-
-  ipcMain.handle('show-gemini-panel', async (_, show) => {
-    showGeminiView(show);
+  ipcMain.handle('inject-gemini-cookies', async (_, cookie) => {
+    await injectCookies(cookie);
     return { success: true };
   });
 
-  ipcMain.handle('gemini-login', async (_, { cookie, bypass }) => {
-    showGeminiView(true);
-    const ses = session.fromPartition('persist:gemini');
+  ipcMain.handle('wait-for-download', (_, timeoutMs = 300000) => {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        const idx = downloadWaitQueue.findIndex((w) => w.reject === reject);
+        if (idx >= 0) downloadWaitQueue.splice(idx, 1);
+        reject(new Error('Download timed out'));
+      }, timeoutMs);
 
-    if (bypass && cookie) {
-      await injectCookies(ses, cookie);
-      await geminiView.webContents.loadURL('https://gemini.google.com');
-      return { success: true, method: 'cookie' };
-    }
-
-    await geminiView.webContents.loadURL('https://accounts.google.com/signin');
-    return { success: true, method: 'login' };
-  });
-
-  ipcMain.handle('generate-keyframe-browser', async (_, { imagePath, panelIndex, total }) => {
-    if (!geminiView) showGeminiView(true);
-
-    const theme = store.get('theme', 'solo-leveling');
-    const customColor = store.get('customColor', '#7B5CF0');
-    const customPrompt = store.get('customGeneralPrompt', '');
-    const prompt = await optimizePromptForImage(imagePath, theme, customColor);
-    const finalPrompt = customPrompt.trim() || prompt;
-
-    const dirs = await ensureDirs();
-    const outName = `keyframe_${String(panelIndex + 1).padStart(3, '0')}.png`;
-    const outPath = path.join(dirs.keyframes, outName);
-
-    sendToRenderer('generation-status', {
-      type: 'image',
-      message: `Generating keyframe ${panelIndex + 1} of ${total}...`,
-      progress: ((panelIndex + 1) / total) * 100,
+      downloadWaitQueue.push({
+        resolve: (val) => {
+          clearTimeout(timer);
+          resolve(val);
+        },
+        reject: (err) => {
+          clearTimeout(timer);
+          reject(err);
+        },
+      });
     });
-
-    const result = await runImageGenerationAutomation(
-      geminiView.webContents,
-      imagePath,
-      finalPrompt,
-      outPath,
-      (status) => sendToRenderer('generation-status', { type: 'image', ...status })
-    );
-
-    return result;
-  });
-
-  ipcMain.handle('generate-video-browser', async (_, { imagePath, videoPrompt, clipIndex, total }) => {
-    if (!geminiView) showGeminiView(true);
-
-    const dirs = await ensureDirs();
-    const clipName = `clip_${String(clipIndex + 1).padStart(3, '0')}.mp4`;
-    const outPath = path.join(dirs.clips, clipName);
-
-    sendToRenderer('generation-status', {
-      type: 'video',
-      message: `Generating clip ${clipIndex + 1} of ${total}...`,
-      progress: ((clipIndex + 1) / total) * 100,
-    });
-
-    const result = await runVideoGenerationAutomation(
-      geminiView.webContents,
-      imagePath,
-      videoPrompt,
-      outPath,
-      dirs.downloads,
-      (status) => sendToRenderer('generation-status', { type: 'video', ...status })
-    );
-
-    if (result.success && result.path) {
-      const seedName = `seed_${String(clipIndex + 2).padStart(3, '0')}.png`;
-      const seedPath = path.join(dirs.seeds, seedName);
-      try {
-        await extractLastFrame(result.path, seedPath);
-        result.seedPath = seedPath;
-      } catch (err) {
-        result.seedError = err.message;
-      }
-    }
-
-    return result;
   });
 
   ipcMain.handle('build-video-prompt', (_, { description, action, cameraMove }) => {
@@ -589,14 +463,18 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle('get-base-prompt', () => BASE_PROMPT);
+
+  ipcMain.handle('get-webview-css', () => {
+    const cssPath = path.join(__dirname, 'renderer', 'webview.css');
+    return fsp.readFile(cssPath, 'utf8');
+  });
 }
 
 app.whenReady().then(async () => {
   await ensureDirs();
+  setupDownloadBridge();
   registerIpcHandlers();
   createMainWindow();
-
-  mainWindow.on('resize', resizeGeminiView);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();

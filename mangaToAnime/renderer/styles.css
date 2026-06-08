@@ -110,7 +110,23 @@ body {
 .sidebar-right {
   border-right: none;
   border-left: 1px solid var(--border);
-  width: 260px;
+  width: 380px;
+}
+
+.gemini-webview-container {
+  margin-bottom: 16px;
+}
+
+.gemini-webview-container h2 {
+  margin-bottom: 8px;
+}
+
+#gemini-webview {
+  width: 100%;
+  height: 420px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #000;
 }
 
 .sidebar h2 {
@@ -125,7 +141,6 @@ body {
   flex: 1;
   overflow-y: auto;
   padding: 24px;
-  padding-right: 380px;
 }
 
 /* Buttons */

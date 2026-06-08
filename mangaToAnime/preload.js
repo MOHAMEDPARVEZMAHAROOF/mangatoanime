@@ -23,11 +23,14 @@ contextBridge.exposeInMainWorld('mangaAPI', {
   getWorkDirs: () => ipcRenderer.invoke('get-work-dirs'),
   selectPdf: () => ipcRenderer.invoke('select-pdf'),
   readFileBuffer: (filePath) => ipcRenderer.invoke('read-file-buffer', filePath),
+  readFileBase64: (filePath) => ipcRenderer.invoke('read-file-base64', filePath),
   saveExtractedPanel: (data) => ipcRenderer.invoke('save-extracted-panel', data),
+  saveKeyframe: (data) => ipcRenderer.invoke('save-keyframe', data),
+  saveClip: (data) => ipcRenderer.invoke('save-clip', data),
+  extractSeedFrame: (data) => ipcRenderer.invoke('extract-seed-frame', data),
   optimizePrompt: (data) => ipcRenderer.invoke('optimize-prompt', data),
-  generateKeyframeApi: (data) => ipcRenderer.invoke('generate-keyframe-api', data),
-  generateKeyframeBrowser: (data) => ipcRenderer.invoke('generate-keyframe-browser', data),
-  generateVideoBrowser: (data) => ipcRenderer.invoke('generate-video-browser', data),
+  injectGeminiCookies: (cookie) => ipcRenderer.invoke('inject-gemini-cookies', cookie),
+  waitForDownload: (timeout) => ipcRenderer.invoke('wait-for-download', timeout),
   buildVideoPrompt: (data) => ipcRenderer.invoke('build-video-prompt', data),
   getVideoDuration: (videoPath) => ipcRenderer.invoke('get-video-duration', videoPath),
   generateThumbnail: (videoPath) => ipcRenderer.invoke('generate-thumbnail', videoPath),
@@ -36,9 +39,8 @@ contextBridge.exposeInMainWorld('mangaAPI', {
   openPath: (filePath) => ipcRenderer.invoke('open-path', filePath),
   showItemInFolder: (filePath) => ipcRenderer.invoke('show-item-in-folder', filePath),
   deleteFile: (filePath) => ipcRenderer.invoke('delete-file', filePath),
-  showGeminiPanel: (show) => ipcRenderer.invoke('show-gemini-panel', show),
-  geminiLogin: (data) => ipcRenderer.invoke('gemini-login', data),
   getBasePrompt: () => ipcRenderer.invoke('get-base-prompt'),
+  getWebviewCss: () => ipcRenderer.invoke('get-webview-css'),
 
   onGenerationStatus: (callback) => {
     const handler = (_, data) => callback(data);

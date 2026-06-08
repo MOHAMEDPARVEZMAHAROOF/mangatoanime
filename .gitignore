@@ -1,0 +1,5 @@
+.vercel
+mangaToAnime/node_modules/
+mangaToAnime/dist/
+*.log
+.DS_Store

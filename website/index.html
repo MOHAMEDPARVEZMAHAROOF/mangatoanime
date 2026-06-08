@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MangaToAnime — Desktop App</title>
+  <style>
+    :root { --bg: #0a0a0a; --card: #141414; --accent: #7B5CF0; --text: #f0f0f0; --muted: #888; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+    .hero { max-width: 900px; margin: 0 auto; padding: 60px 24px; text-align: center; }
+    h1 { font-size: 2.5rem; background: linear-gradient(135deg, var(--accent), #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .badge { display: inline-block; background: var(--card); border: 1px solid #333; padding: 6px 14px; border-radius: 20px; font-size: 13px; color: var(--muted); margin: 16px 0; }
+    p { color: var(--muted); max-width: 640px; margin: 16px auto; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin: 40px 0; text-align: left; }
+    .card { background: var(--card); border: 1px solid #2a2a2a; border-radius: 12px; padding: 20px; }
+    .card h3 { color: var(--accent); margin-bottom: 8px; font-size: 15px; }
+  .card p { margin: 0; font-size: 14px; }
+    .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 32px; }
+    a.btn { display: inline-block; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; }
+    a.primary { background: var(--accent); color: #fff; }
+    a.ghost { border: 1px solid #333; color: var(--text); }
+    .warn { background: #1a1028; border: 1px solid var(--accent); border-radius: 12px; padding: 16px 20px; margin: 32px auto; max-width: 640px; font-size: 14px; color: #ccc; }
+    code { background: #1a1a1a; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+    footer { text-align: center; padding: 40px; color: var(--muted); font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <h1>MangaToAnime</h1>
+    <span class="badge">Desktop App · Windows &amp; macOS</span>
+    <p>Convert manga PDF panels into anime-styled fight scene videos using Gemini image generation and Veo video generation — powered by Electron.</p>
+
+    <div class="warn">
+      <strong>Desktop app only.</strong> MangaToAnime is an Electron desktop application and cannot run inside a web browser or on Vercel as a hosted app. Download and install the executable on your computer.
+    </div>
+
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/MOHAMEDPARVEZMAHAROOF/mangatoanime/releases">Download Releases</a>
+      <a class="btn ghost" href="https://github.com/MOHAMEDPARVEZMAHAROOF/mangatoanime">View on GitHub</a>
+    </div>
+
+    <div class="cards">
+      <div class="card"><h3>PDF → Panels</h3><p>Upload manga PDFs, select pages, extract at 300 DPI.</p></div>
+      <div class="card"><h3>Gemini Automation</h3><p>Embedded webview automates gemini.google.com for image restyling.</p></div>
+      <div class="card"><h3>Veo Clips</h3><p>Generate video clips with seed-frame chaining for continuity.</p></div>
+      <div class="card"><h3>FFmpeg Export</h3><p>Stitch clips into MangaFight_[timestamp].mp4 on your Desktop.</p></div>
+    </div>
+
+    <h2 style="font-size:1.2rem;margin-top:48px;color:var(--text)">Build from source</h2>
+    <p><code>cd mangaToAnime && npm install && npm start</code></p>
+    <p><code>npm run build:win:unpacked</code> → <code>dist/win-unpacked/MangaToAnime.exe</code></p>
+  </div>
+  <footer>MangaToAnime · MIT License</footer>
+</body>
+</html>

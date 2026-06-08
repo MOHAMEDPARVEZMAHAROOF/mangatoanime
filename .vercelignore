@@ -1,0 +1,6 @@
+mangaToAnime/node_modules
+mangaToAnime/dist
+mangaToAnime/.git
+**/*.exe
+**/*.zip
+**/*.dmg

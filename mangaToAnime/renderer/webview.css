@@ -1,0 +1,11 @@
+/* Injected into Gemini webview to reduce visual clutter during automation */
+body {
+  scrollbar-width: thin;
+}
+
+footer,
+[class*="marketing"],
+[class*="footer"],
+[class*="promo"] {
+  display: none !important;
+}

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file:; media-src 'self' blob: file:;" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://*.google.com https://*.googleusercontent.com https://*.gstatic.com; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file: https:; media-src 'self' blob: file: https:; frame-src https://*.google.com https://accounts.google.com;" />
   <title>MangaToAnime</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -120,8 +120,18 @@
         </section>
       </main>
 
-      <!-- Right Sidebar: Status & Settings -->
+      <!-- Right: Gemini Webview + Status -->
       <aside class="sidebar sidebar-right">
+        <div id="gemini-webview-container" class="gemini-webview-container hidden">
+          <h2>Gemini Browser</h2>
+          <webview
+            id="gemini-webview"
+            partition="persist:gemini"
+            src="about:blank"
+            allowpopups
+            webpreferences="contextIsolation=yes, nodeIntegration=no"
+          ></webview>
+        </div>
         <h2>Status</h2>
         <div id="status-log" class="status-log">
           <p class="status-item">Ready</p>
@@ -141,7 +151,7 @@
 
   <!-- Settings Modal -->
   <div id="settings-modal" class="modal hidden">
-    <div class="modal-backdrop"></div>
+    <div class="modal-backdrop" data-close="settings"></div>
     <div class="modal-content">
       <div class="modal-header">
         <h2>Settings</h2>
@@ -219,7 +229,7 @@
 
   <!-- Gemini Login Modal -->
   <div id="login-modal" class="modal hidden">
-    <div class="modal-backdrop"></div>
+    <div class="modal-backdrop" data-close="login"></div>
     <div class="modal-content">
       <div class="modal-header">
         <h2>Gemini Login</h2>

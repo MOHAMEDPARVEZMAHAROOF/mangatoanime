@@ -29,10 +29,16 @@
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => document.querySelectorAll(sel);
 
-  function init() {
+  async function init() {
     bindEvents();
-    loadSettings();
+    await loadSettings();
     setupStatusListeners();
+    try {
+      await GeminiBrowser.initWebview();
+      logStatus('Gemini webview ready');
+    } catch (err) {
+      logStatus(`Webview init: ${err.message}`, 'error');
+    }
     logStatus('MangaToAnime ready');
   }
 
@@ -65,9 +71,11 @@
     $('#btn-settings').addEventListener('click', openSettings);
     $('#btn-close-settings').addEventListener('click', closeSettings);
     $('#btn-save-settings').addEventListener('click', saveSettings);
-    $('.modal-backdrop')?.addEventListener('click', () => {
-      closeSettings();
-      closeLogin();
+    $$('.modal-backdrop').forEach((backdrop) => {
+      backdrop.addEventListener('click', () => {
+        if (backdrop.dataset.close === 'settings') closeSettings();
+        if (backdrop.dataset.close === 'login') closeLogin();
+      });
     });
 
     $('#btn-gemini-login').addEventListener('click', openLogin);
@@ -152,14 +160,20 @@
   }
 
   async function doGeminiLogin(bypass) {
-    const settings = await window.mangaAPI.getSettings();
-    const result = await window.mangaAPI.geminiLogin({
-      cookie: settings.geminiCookie,
-      bypass: bypass || settings.bypassLogin,
-    });
-    logStatus(bypass ? 'Logged in via cookie bypass' : 'Opened Google sign-in', 'success');
     closeLogin();
-    return result;
+    GeminiBrowser.showWebview(true);
+    const settings = await window.mangaAPI.getSettings();
+    try {
+      if (bypass || settings.bypassLogin) {
+        await GeminiBrowser.loginWithCookie(settings.geminiCookie);
+        logStatus('Logged in via cookie bypass', 'success');
+      } else {
+        await GeminiBrowser.openSignIn();
+        logStatus('Opened Google sign-in in webview', 'success');
+      }
+    } catch (err) {
+      logStatus(`Login error: ${err.message}`, 'error');
+    }
   }
 
   async function saveSettings() {
@@ -272,6 +286,8 @@
       $('#timeline-footer').classList.remove('hidden');
       renderTimelineFooter();
     }
+
+    GeminiBrowser.showWebview(step >= 3 && step <= 5);
   }
 
   async function startExtraction() {
@@ -300,6 +316,7 @@
 
   async function startKeyframeGeneration() {
     goToStep(3);
+    GeminiBrowser.showWebview(true);
     const list = $('#keyframe-list');
     list.innerHTML = '';
     state.keyframes = [];
@@ -314,7 +331,9 @@
       try {
         showGenerationStatus(`Generating keyframe ${i + 1} of ${total}...`);
 
-        const result = await GeminiHandler.generateKeyframe(panel, i, total, true);
+        const result = await GeminiBrowser.generateKeyframe(panel, i, total, (status) => {
+          if (status?.message) showGenerationStatus(status.message);
+        });
 
         if (result.success) {
           const keyframe = {
@@ -399,7 +418,9 @@
       <figure><div class="spinner" style="margin: 40px auto"></div><figcaption>Regenerating...</figcaption></figure>
     `;
 
-    const result = await GeminiHandler.generateKeyframe(panel, index, state.extractedPanels.length, true);
+    const result = await GeminiBrowser.generateKeyframe(panel, index, state.extractedPanels.length, (status) => {
+      if (status?.message) showGenerationStatus(status.message);
+    });
 
     if (result.success) {
       state.keyframes[index] = {
@@ -433,11 +454,11 @@
     builder.innerHTML = '';
     state.videoPrompts = [];
 
-    const presets = GeminiHandler.getActionPresets();
+    const presets = GeminiBrowser.getActionPresets();
 
     for (let i = 0; i < state.keyframes.length; i++) {
       const kf = state.keyframes[i];
-      const description = await GeminiHandler.describeKeyframe(kf.path);
+      const description = await GeminiBrowser.describeKeyframe(kf.path);
       kf.description = description;
 
       const defaultPreset = presets['combat-strike'];
@@ -510,6 +531,7 @@
 
   async function startVideoGeneration() {
     goToStep(5);
+    GeminiBrowser.showWebview(true);
 
     const promptCards = $$('.prompt-card');
     const prompts = Array.from(promptCards).map((card) => card.querySelector('.input-prompt').value);
