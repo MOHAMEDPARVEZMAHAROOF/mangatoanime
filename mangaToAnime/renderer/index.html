@@ -9,37 +9,45 @@
 </head>
 <body>
   <div id="app">
-    <!-- Top Bar -->
     <header class="top-bar">
       <div class="logo-area">
         <img src="../assets/logo.png" alt="MangaToAnime" class="logo" />
-        <h1>MangaToAnime</h1>
+        <div>
+          <h1>MangaToAnime</h1>
+          <span class="tagline">Convert Manga to Anime Video</span>
+        </div>
       </div>
       <div class="step-indicator">
         <span id="step-label">Step 1/7</span>
         <span id="step-name">PDF Upload</span>
       </div>
       <div class="top-actions">
-        <button id="btn-gemini-login" class="btn btn-ghost" title="Gemini Login">Gemini Login</button>
+        <div id="login-status" class="login-status not-logged-in">
+          <span class="login-dot"></span>
+          <span id="login-status-text">Please Log In</span>
+        </div>
+        <button id="btn-top-bypass" class="btn btn-ghost btn-sm">Bypass Login</button>
+        <button id="btn-gemini-login" class="btn btn-ghost btn-sm">Sign In</button>
         <button id="btn-settings" class="btn btn-icon" title="Settings">⚙</button>
       </div>
     </header>
 
+    <div id="login-toast" class="login-toast hidden">
+      ⚠️ Please log in to Gemini in the browser panel first.
+    </div>
+
     <div class="main-layout">
-      <!-- Left Sidebar: Panel Queue -->
       <aside class="sidebar sidebar-left">
-        <h2>Panel Queue</h2>
+        <h2>Panel Queue <span id="queue-badge" class="badge">0</span></h2>
         <div id="panel-queue" class="queue-list">
           <p class="empty-state">No panels selected</p>
         </div>
         <button id="btn-process-panels" class="btn btn-primary btn-block" disabled>
-          Process Selected Panels
+          🚀 Process Selected Panels
         </button>
       </aside>
 
-      <!-- Center Workspace -->
       <main class="workspace" id="workspace">
-        <!-- Step 1: PDF Upload -->
         <section id="step-1" class="step-panel active">
           <div id="drop-zone" class="drop-zone">
             <div class="drop-icon">📄</div>
@@ -49,7 +57,6 @@
           <div id="pdf-grid" class="pdf-grid hidden"></div>
         </section>
 
-        <!-- Step 2: Extraction -->
         <section id="step-2" class="step-panel">
           <h2>Extracting Panels</h2>
           <div class="progress-container">
@@ -60,33 +67,66 @@
           </div>
         </section>
 
-        <!-- Step 3: Keyframe Restyling -->
+        <!-- Step 3: Gemini embedded in center -->
         <section id="step-3" class="step-panel">
-          <h2>Anime Keyframe Generation</h2>
-          <div id="keyframe-list" class="keyframe-list"></div>
+          <h2>Step 3 — Restyle to Anime</h2>
+          <div class="restyle-layout">
+            <div id="gemini-dock" class="gemini-live-box">
+              <div class="gemini-live-header">
+                <span>Gemini Live Interface</span>
+                <span class="live-dot"></span>
+              </div>
+              <webview
+                id="gemini-webview"
+                partition="persist:gemini"
+                src="https://gemini.google.com/app"
+                allowpopups
+                useragent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                webpreferences="contextIsolation=yes, nodeIntegration=no, javascript=yes"
+              ></webview>
+            </div>
+            <div class="automation-panel">
+              <h3>Automation</h3>
+              <p id="auto-progress-text" class="auto-text">Processing panel 0 of 0</p>
+              <div class="progress-bar">
+                <div id="auto-progress" class="progress-fill" style="width: 0%"></div>
+              </div>
+              <p id="auto-pct" class="auto-pct">0%</p>
+              <button id="btn-start-restyle" class="btn btn-primary btn-block" disabled>
+                ▶ Start Restyling Automation
+              </button>
+              <div id="automation-idle" class="automation-idle">
+                <div class="robot-icon">🤖</div>
+                <p class="idle-title">Awaiting Automation</p>
+                <p class="idle-sub">Click Start to allow the app to automate Gemini and restyle your panels.</p>
+              </div>
+              <div id="keyframe-list" class="keyframe-list compact"></div>
+            </div>
+          </div>
         </section>
 
-        <!-- Step 4: Video Prompt Builder -->
         <section id="step-4" class="step-panel">
           <h2>Video Prompt Builder</h2>
           <div id="prompt-builder" class="prompt-builder"></div>
         </section>
 
-        <!-- Step 5: Video Generation -->
         <section id="step-5" class="step-panel">
-          <h2>Video Generation</h2>
-          <div class="progress-container">
-            <div class="progress-bar">
-              <div id="video-progress" class="progress-fill" style="width: 0%"></div>
+          <h2>Step 5 — Video Generation</h2>
+          <div class="restyle-layout step5-layout">
+            <div class="gemini-dock-placeholder"></div>
+            <div class="automation-panel">
+              <h3>Video Automation</h3>
+              <div class="progress-container">
+                <div class="progress-bar">
+                  <div id="video-progress" class="progress-fill" style="width: 0%"></div>
+                </div>
+                <p id="video-status">Waiting to start...</p>
+              </div>
+              <button id="btn-start-video" class="btn btn-primary btn-block" disabled>▶ Start Video Automation</button>
             </div>
-            <p id="video-status">Waiting to start...</p>
-          </div>
-          <div id="gemini-hint" class="hint-card">
-            <p>Gemini browser panel opens on the right. Use <strong>Gemini Login</strong> or <strong>Bypass Login</strong> in Settings with your cookie.</p>
           </div>
         </section>
 
-        <!-- Step 6: Clip Queue -->
         <section id="step-6" class="step-panel">
           <h2>Clip Timeline</h2>
           <div id="clip-timeline" class="clip-timeline"></div>
@@ -95,7 +135,6 @@
           </div>
         </section>
 
-        <!-- Step 7: Export -->
         <section id="step-7" class="step-panel">
           <h2>Export Full Video</h2>
           <div id="export-area" class="export-area">
@@ -120,30 +159,14 @@
         </section>
       </main>
 
-      <!-- Right: Gemini Webview + Status -->
       <aside class="sidebar sidebar-right">
-        <div id="gemini-webview-container" class="gemini-webview-container hidden">
-          <h2>Gemini Browser</h2>
-          <webview
-            id="gemini-webview"
-            partition="persist:gemini"
-            src="about:blank"
-            allowpopups
-            webpreferences="contextIsolation=yes, nodeIntegration=no"
-          ></webview>
-        </div>
-        <h2>Status</h2>
+        <h2>Activity Log</h2>
         <div id="status-log" class="status-log">
           <p class="status-item">Ready</p>
-        </div>
-        <div id="generation-status" class="generation-status hidden">
-          <div class="spinner"></div>
-          <p id="gen-status-text">Processing...</p>
         </div>
       </aside>
     </div>
 
-    <!-- Clip timeline bar (always visible from step 6) -->
     <footer id="timeline-footer" class="timeline-footer hidden">
       <div id="timeline-clips" class="timeline-clips"></div>
     </footer>
@@ -159,11 +182,6 @@
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label for="setting-api-key">Gemini API Key</label>
-          <input type="password" id="setting-api-key" placeholder="Enter API key" />
-        </div>
-
-        <div class="form-group">
           <label for="setting-theme">Theme</label>
           <select id="setting-theme">
             <option value="solo-leveling">Solo Leveling (purple/black)</option>
@@ -172,12 +190,10 @@
             <option value="custom">Custom</option>
           </select>
         </div>
-
         <div class="form-group" id="custom-color-group">
           <label for="setting-custom-color">Custom Accent Color</label>
           <input type="color" id="setting-custom-color" value="#7B5CF0" />
         </div>
-
         <div class="form-group">
           <label for="setting-series">Series Mode</label>
           <select id="setting-series">
@@ -185,7 +201,6 @@
             <option value="custom">Add custom series</option>
           </select>
         </div>
-
         <div class="form-group">
           <label for="setting-clip-duration">Default Clip Duration</label>
           <select id="setting-clip-duration">
@@ -193,7 +208,6 @@
             <option value="10">10 seconds</option>
           </select>
         </div>
-
         <div class="form-group">
           <label for="setting-resolution">Output Resolution</label>
           <select id="setting-resolution">
@@ -201,9 +215,7 @@
             <option value="4K">4K</option>
           </select>
         </div>
-
         <hr class="divider" />
-
         <h3>Gemini Browser Login</h3>
         <div class="form-group">
           <label class="checkbox-label">
@@ -213,9 +225,8 @@
         </div>
         <div class="form-group" id="cookie-group">
           <label for="setting-gemini-cookie">Google Session Cookie</label>
-          <textarea id="setting-gemini-cookie" rows="3" placeholder="Paste cookie string here (e.g. SID=...; HSID=...)"></textarea>
+          <textarea id="setting-gemini-cookie" rows="3" placeholder="Paste cookie string (SID=...; HSID=...)"></textarea>
         </div>
-
         <div class="form-group">
           <label for="setting-general-prompt">General Prompt (optional override)</label>
           <textarea id="setting-general-prompt" rows="4" placeholder="Leave empty to use default Solo Leveling prompt"></textarea>
@@ -227,7 +238,6 @@
     </div>
   </div>
 
-  <!-- Gemini Login Modal -->
   <div id="login-modal" class="modal hidden">
     <div class="modal-backdrop" data-close="login"></div>
     <div class="modal-content">
@@ -236,10 +246,9 @@
         <button id="btn-close-login" class="btn btn-icon">✕</button>
       </div>
       <div class="modal-body">
-        <p>Sign in to Gemini to enable image and video generation automation.</p>
-        <button id="btn-open-gemini-login" class="btn btn-primary btn-block">Open Google Sign-In</button>
+        <p>Sign in inside the <strong>Gemini Live Interface</strong> panel, or use cookie bypass.</p>
+        <button id="btn-open-gemini-login" class="btn btn-primary btn-block">Focus Gemini Panel</button>
         <hr class="divider" />
-        <p class="sub">If sign-in is blocked by security policies:</p>
         <button id="btn-bypass-login" class="btn btn-ghost btn-block">Bypass Login with Cookie</button>
       </div>
     </div>

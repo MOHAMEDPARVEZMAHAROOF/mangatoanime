@@ -5,7 +5,7 @@
   const STEPS = [
     { id: 1, name: 'PDF Upload' },
     { id: 2, name: 'Panel Extraction' },
-    { id: 3, name: 'Anime Keyframes' },
+    { id: 3, name: 'Restyle to Anime' },
     { id: 4, name: 'Video Prompts' },
     { id: 5, name: 'Video Generation' },
     { id: 6, name: 'Clip Timeline' },
@@ -23,7 +23,11 @@
     clips: [],
     settings: {},
     exportedPath: null,
+    isLoggedIn: false,
+    isAutomating: false,
   };
+
+  let loginPollTimer = null;
 
   // DOM refs
   const $ = (sel) => document.querySelector(sel);
@@ -35,11 +39,52 @@
     setupStatusListeners();
     try {
       await GeminiBrowser.initWebview();
-      logStatus('Gemini webview ready');
+      logStatus('Gemini Live Interface ready');
+      startLoginPolling();
     } catch (err) {
       logStatus(`Webview init: ${err.message}`, 'error');
     }
     logStatus('MangaToAnime ready');
+  }
+
+  function startLoginPolling() {
+    if (loginPollTimer) clearInterval(loginPollTimer);
+    loginPollTimer = setInterval(async () => {
+      if (state.currentStep < 3) return;
+      try {
+        const loggedIn = await GeminiBrowser.checkLogin();
+        updateLoginUI(loggedIn);
+      } catch {
+        updateLoginUI(false);
+      }
+    }, 2500);
+  }
+
+  function updateLoginUI(loggedIn) {
+    state.isLoggedIn = loggedIn;
+    const statusEl = $('#login-status');
+    const textEl = $('#login-status-text');
+    const restyleBtn = $('#btn-start-restyle');
+    const videoBtn = $('#btn-start-video');
+    const toast = $('#login-toast');
+
+    if (loggedIn) {
+      statusEl?.classList.remove('not-logged-in');
+      statusEl?.classList.add('logged-in');
+      if (textEl) textEl.textContent = 'Logged In';
+      if (restyleBtn && state.currentStep === 3 && !state.isAutomating) restyleBtn.disabled = false;
+      if (videoBtn && state.currentStep === 5 && !state.isAutomating) videoBtn.disabled = false;
+      toast?.classList.add('hidden');
+    } else {
+      statusEl?.classList.add('not-logged-in');
+      statusEl?.classList.remove('logged-in');
+      if (textEl) textEl.textContent = 'Please Log In';
+      if (restyleBtn) restyleBtn.disabled = true;
+      if (videoBtn) videoBtn.disabled = true;
+      if (toast && (state.currentStep === 3 || state.currentStep === 5)) {
+        toast.classList.remove('hidden');
+      }
+    }
   }
 
   function bindEvents() {
@@ -79,9 +124,16 @@
     });
 
     $('#btn-gemini-login').addEventListener('click', openLogin);
+    $('#btn-top-bypass').addEventListener('click', () => doGeminiLogin(true));
     $('#btn-close-login').addEventListener('click', closeLogin);
-    $('#btn-open-gemini-login').addEventListener('click', () => doGeminiLogin(false));
+    $('#btn-open-gemini-login').addEventListener('click', () => {
+      closeLogin();
+      GeminiBrowser.focusGeminiPanel();
+      logStatus('Sign in inside the Gemini Live Interface panel');
+    });
     $('#btn-bypass-login').addEventListener('click', () => doGeminiLogin(true));
+    $('#btn-start-restyle').addEventListener('click', startRestylingAutomation);
+    $('#btn-start-video').addEventListener('click', startVideoAutomation);
 
     $('#btn-export').addEventListener('click', startExport);
     $('#btn-open-video').addEventListener('click', () => {
@@ -97,7 +149,6 @@
 
   function setupStatusListeners() {
     window.mangaAPI.onGenerationStatus((data) => {
-      showGenerationStatus(data.message, data.progress);
       logStatus(data.message);
     });
   }
@@ -161,15 +212,21 @@
 
   async function doGeminiLogin(bypass) {
     closeLogin();
-    GeminiBrowser.showWebview(true);
+    if (state.currentStep < 3) goToStep(3);
     const settings = await window.mangaAPI.getSettings();
     try {
       if (bypass || settings.bypassLogin) {
+        if (!settings.geminiCookie) {
+          openSettings();
+          logStatus('Paste cookie in Settings first', 'error');
+          return;
+        }
         await GeminiBrowser.loginWithCookie(settings.geminiCookie);
-        logStatus('Logged in via cookie bypass', 'success');
+        logStatus('Cookie injected — reloading Gemini', 'success');
+        setTimeout(() => GeminiBrowser.checkLogin().then(updateLoginUI), 3000);
       } else {
-        await GeminiBrowser.openSignIn();
-        logStatus('Opened Google sign-in in webview', 'success');
+        GeminiBrowser.focusGeminiPanel();
+        logStatus('Sign in inside the Gemini Live Interface', 'success');
       }
     } catch (err) {
       logStatus(`Login error: ${err.message}`, 'error');
@@ -261,12 +318,17 @@
       return;
     }
 
+    $('#queue-badge').textContent = String(state.selectedPages.length);
+
     queue.innerHTML = state.selectedPages
       .map(
-        (p, i) => `
+        (p) => `
       <div class="queue-item">
-        <img src="${p.dataUrl}" alt="Panel ${i + 1}" />
-        <span>Page ${p.pageNum}</span>
+        <img src="${p.dataUrl}" alt="Panel" />
+        <div>
+          <div>Page ${p.pageNum}</div>
+          <div class="status-ready">${state.extractedPanels.some((e) => e.pageIndex === p.pageIndex) ? 'Ready' : 'Selected'}</div>
+        </div>
       </div>
     `
       )
@@ -287,7 +349,12 @@
       renderTimelineFooter();
     }
 
-    GeminiBrowser.showWebview(step >= 3 && step <= 5);
+    if (step === 3 || step === 5) {
+      GeminiBrowser.positionGeminiDock(step);
+      setTimeout(() => GeminiBrowser.checkLogin().then(updateLoginUI).catch(() => updateLoginUI(false)), 500);
+    }
+
+    $('#login-toast').classList.toggle('hidden', step < 3 || state.isLoggedIn);
   }
 
   async function startExtraction() {
@@ -305,18 +372,56 @@
       });
 
       status.textContent = 'Extraction complete!';
-      logStatus(`Extracted ${state.extractedPanels.length} panels`, 'success');
+      logStatus(`Starting extraction of ${state.extractedPanels.length} panels at 300 DPI...`, 'success');
+      state.extractedPanels.forEach((p, i) => {
+        logStatus(`Extracted page ${p.pageNum} (${i + 1}/${state.extractedPanels.length})`);
+      });
+      logStatus(`Extraction complete. ${state.extractedPanels.length} panels saved.`, 'success');
+      updatePanelQueue();
 
-      await startKeyframeGeneration();
+      goToStep(3);
+      resetAutomationUI();
+      logStatus('Log in to Gemini, then click Start Restyling Automation');
     } catch (err) {
       status.textContent = `Error: ${err.message}`;
       logStatus(`Extraction failed: ${err.message}`, 'error');
     }
   }
 
+  function resetAutomationUI() {
+    $('#auto-progress-text').textContent = `Processing panel 0 of ${state.extractedPanels.length}`;
+    $('#auto-progress').style.width = '0%';
+    $('#auto-pct').textContent = '0%';
+    $('#automation-idle').classList.remove('hidden');
+    $('#btn-start-restyle').disabled = !state.isLoggedIn;
+  }
+
+  function updateAutomationProgress(current, total, pct, message) {
+    $('#auto-progress-text').textContent = message || `Processing panel ${current} of ${total}`;
+    $('#auto-progress').style.width = `${pct}%`;
+    $('#auto-pct').textContent = `${Math.round(pct)}%`;
+  }
+
+  async function startRestylingAutomation() {
+    if (!state.isLoggedIn) {
+      logStatus('Please log in to Gemini first', 'error');
+      $('#login-toast').classList.remove('hidden');
+      return;
+    }
+    if (!state.extractedPanels.length) {
+      logStatus('No panels to process', 'error');
+      return;
+    }
+
+    state.isAutomating = true;
+    $('#btn-start-restyle').disabled = true;
+    $('#automation-idle').classList.add('hidden');
+    await startKeyframeGeneration();
+    state.isAutomating = false;
+    $('#btn-start-restyle').disabled = !state.isLoggedIn;
+  }
+
   async function startKeyframeGeneration() {
-    goToStep(3);
-    GeminiBrowser.showWebview(true);
     const list = $('#keyframe-list');
     list.innerHTML = '';
     state.keyframes = [];
@@ -329,10 +434,14 @@
       list.appendChild(card);
 
       try {
-        showGenerationStatus(`Generating keyframe ${i + 1} of ${total}...`);
+        updateAutomationProgress(i + 1, total, ((i) / total) * 100, `Processing panel ${i + 1} of ${total}...`);
+        logStatus(`Automating Gemini for panel ${i + 1}...`);
 
         const result = await GeminiBrowser.generateKeyframe(panel, i, total, (status) => {
-          if (status?.message) showGenerationStatus(status.message);
+          if (status?.message) logStatus(status.message);
+          if (status?.progress != null) {
+            updateAutomationProgress(i + 1, total, status.progress, status.message);
+          }
         });
 
         if (result.success) {
@@ -356,7 +465,20 @@
       }
     }
 
-    hideGenerationStatus();
+    updateAutomationProgress(total, total, 100, 'Restyling complete!');
+    logStatus('All panels processed. Approve keyframes below.', 'success');
+  }
+
+  async function startVideoAutomation() {
+    if (!state.isLoggedIn) {
+      logStatus('Please log in to Gemini first', 'error');
+      return;
+    }
+    state.isAutomating = true;
+    $('#btn-start-video').disabled = true;
+    await startVideoGeneration();
+    state.isAutomating = false;
+    $('#btn-start-video').disabled = !state.isLoggedIn;
   }
 
   function createKeyframeCard(panel, index, keyframe, status) {
@@ -419,7 +541,7 @@
     `;
 
     const result = await GeminiBrowser.generateKeyframe(panel, index, state.extractedPanels.length, (status) => {
-      if (status?.message) showGenerationStatus(status.message);
+      if (status?.message) logStatus(status.message);
     });
 
     if (result.success) {
@@ -524,15 +646,16 @@
 
     const startBtn = document.createElement('button');
     startBtn.className = 'btn btn-primary btn-lg';
-    startBtn.textContent = 'Start Video Generation';
-    startBtn.addEventListener('click', startVideoGeneration);
+    startBtn.textContent = 'Continue to Video Generation';
+    startBtn.addEventListener('click', () => {
+      goToStep(5);
+      GeminiBrowser.positionGeminiDock(5);
+      logStatus('Log in to Gemini if needed, then click Start Video Automation');
+    });
     builder.appendChild(startBtn);
   }
 
   async function startVideoGeneration() {
-    goToStep(5);
-    GeminiBrowser.showWebview(true);
-
     const promptCards = $$('.prompt-card');
     const prompts = Array.from(promptCards).map((card) => card.querySelector('.input-prompt').value);
 
@@ -568,7 +691,6 @@
       }
     }
 
-    hideGenerationStatus();
   }
 
   function showClipTimeline() {
@@ -664,11 +786,9 @@
     const prompt = state.videoPrompts[index]?.prompt ||
       $(`.prompt-card[data-index="${index}"] .input-prompt`)?.value;
 
-    showGenerationStatus(`Regenerating clip ${index + 1}...`);
+    logStatus(`Regenerating clip ${index + 1}...`);
 
     const result = await VeoHandler.generateClip(kf, prompt, index, state.keyframes.length);
-
-    hideGenerationStatus();
 
     if (result.success) {
       if (state.clips[index]?.path) {
@@ -721,16 +841,6 @@
     while (log.children.length > 50) {
       log.removeChild(log.lastChild);
     }
-  }
-
-  function showGenerationStatus(message, progress) {
-    const el = $('#generation-status');
-    el.classList.remove('hidden');
-    $('#gen-status-text').textContent = message;
-  }
-
-  function hideGenerationStatus() {
-    $('#generation-status').classList.add('hidden');
   }
 
   document.addEventListener('DOMContentLoaded', init);

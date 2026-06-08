@@ -187,9 +187,17 @@ const GeminiBrowser = (() => {
     }
 
     function isLoggedIn() {
+      const pageText = (document.body.innerText || '').slice(0, 2000).toLowerCase();
+      if (pageText.includes('meet gemini') && pageText.includes('sign in')) return false;
       const signIn = findByText(['sign in', 'sign up']);
-      const avatar = queryAllDeep(document, 'img[alt*="Google"], img[src*="googleusercontent"], [data-test-id*="avatar"]');
-      return !signIn && avatar.length > 0;
+      const chatInput = walkShadowRoots(document, r =>
+        r.querySelector('rich-textarea, [contenteditable="true"][aria-label*="prompt"], [aria-label*="Ask Gemini"], textarea')
+      );
+      if (chatInput) return true;
+      const avatar = queryAllDeep(document, 'img[src*="googleusercontent"], [data-test-id*="avatar"]');
+      if (avatar.length > 0 && !signIn) return true;
+      if (signIn && (signIn.textContent || '').toLowerCase().trim() === 'sign in') return false;
+      return !!queryAllDeep(document, 'button[aria-label*="Send"], button[aria-label*="Attach"]').length;
     }
   `;
 
@@ -213,15 +221,18 @@ const GeminiBrowser = (() => {
   async function initWebview() {
     const wv = getWebview();
     return new Promise((resolve) => {
-      if (wv.getURL() && wv.getURL() !== 'about:blank') {
+      const onReady = async () => {
+        try {
+          await injectStyles();
+        } catch {
+          // non-fatal
+        }
         resolve();
-        return;
+      };
+      wv.addEventListener('dom-ready', onReady, { once: true });
+      if (!wv.getURL() || wv.getURL() === 'about:blank') {
+        wv.src = 'https://gemini.google.com/app';
       }
-      wv.addEventListener('dom-ready', async () => {
-        await injectStyles();
-        resolve();
-      }, { once: true });
-      wv.src = 'https://gemini.google.com/app';
     });
   }
 
@@ -240,12 +251,13 @@ const GeminiBrowser = (() => {
     const result = await execInWebview(`
       await sleep(500);
       let attach = walkShadowRoots(document, root => root.querySelector('button[aria-label*="Attach"]'))
+        || walkShadowRoots(document, root => root.querySelector('button[aria-label*="Add"]'))
         || findByText(['attach', 'add file', 'upload']);
       if (attach) {
         attach.click();
-        await sleep(800);
+        await sleep(1000);
       }
-      const imagesBtn = findByText(['create and edit images', 'create image', 'images', 'imagen']);
+      const imagesBtn = findByText(['create and edit images', 'create image', 'images', 'imagen', 'create & edit']);
       if (imagesBtn) {
         imagesBtn.click();
         await sleep(1500);
@@ -434,9 +446,21 @@ const GeminiBrowser = (() => {
     return { success: true };
   }
 
-  function showWebview(show = true) {
-    const container = document.getElementById('gemini-webview-container');
-    if (container) container.classList.toggle('hidden', !show);
+  function positionGeminiDock(step) {
+    const dock = document.getElementById('gemini-dock');
+    if (!dock) return;
+    if (step === 5) {
+      const ph = document.querySelector('#step-5 .gemini-dock-placeholder');
+      if (ph && ph.parentNode) ph.replaceWith(dock);
+    } else if (step === 3) {
+      const layout = document.querySelector('#step-3 .restyle-layout');
+      if (layout && layout.firstChild !== dock) layout.insertBefore(dock, layout.firstChild);
+    }
+  }
+
+  function focusGeminiPanel() {
+    const wv = document.getElementById('gemini-webview');
+    if (wv) wv.focus();
   }
 
   return {
@@ -447,7 +471,8 @@ const GeminiBrowser = (() => {
     describeKeyframe,
     loginWithCookie,
     openSignIn,
-    showWebview,
+    positionGeminiDock,
+    focusGeminiPanel,
     checkLogin,
   };
 })();
